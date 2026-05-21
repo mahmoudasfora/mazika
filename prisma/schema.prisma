@@ -1,0 +1,345 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===== المستخدمين والصلاحيات =====
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  avatar    String?
+  role      String   @default("user") // admin, editor, author, moderator, user
+  password  String
+  bio       String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  articles  Article[]
+  comments  Comment[]
+  predictions Prediction[]
+  favorites UserFavorite[]
+}
+
+model UserFavorite {
+  id       String  @id @default(cuid())
+  userId   String
+  teamId   String?
+  leagueId String?
+  matchId  String?
+  type     String  // team, league, match
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team     Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  league   League? @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  match    Match?  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId, leagueId, matchId])
+}
+
+// ===== البطولات والدوريات =====
+model League {
+  id        String   @id @default(cuid())
+  name      String
+  nameEn    String?
+  country   String?
+  logo      String?
+  type      String   @default("league") // league, cup, tournament
+  season    String?
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams     LeagueTeam[]
+  matches   Match[]
+  standings Standing[]
+  topScorers TopScorer[]
+  favorites UserFavorite[]
+}
+
+model LeagueTeam {
+  id       String @id @default(cuid())
+  leagueId String
+  teamId   String
+  league   League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, teamId])
+}
+
+// ===== الفرق =====
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  nameEn    String?
+  shortName String?
+  logo      String?
+  country   String?
+  city      String?
+  stadium   String?
+  founded   Int?
+  color     String?  // اللون الأساسي
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leagueTeams  LeagueTeam[]
+  homeMatches  Match[]   @relation("HomeTeam")
+  awayMatches  Match[]   @relation("AwayTeam")
+  players      Player[]
+  standings    Standing[]
+  topScorers   TopScorer[]
+  articles     ArticleTeam[]
+  favoritedBy  UserFavorite[]
+}
+
+// ===== اللاعبين =====
+model Player {
+  id        String   @id @default(cuid())
+  name      String
+  nameEn    String?
+  photo     String?
+  position  String?  // GK, DEF, MID, FWD
+  number    Int?
+  age       Int?
+  nationality String?
+  goals     Int      @default(0)
+  assists   Int      @default(0)
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  matchEvents  MatchEvent[]  @relation("PlayerEvents")
+  assistEvents MatchEvent[]  @relation("AssistPlayer")
+  lineups      MatchLineup[] @relation("LineupPlayer")
+  topScorers   TopScorer[]
+}
+
+// ===== المباريات =====
+model Match {
+  id           String   @id @default(cuid())
+  homeTeamId   String
+  awayTeamId   String
+  leagueId     String
+  homeScore    Int?
+  awayScore    Int?
+  status       String   @default("upcoming") // upcoming, live, halftime, finished, postponed, cancelled
+  matchDate    DateTime
+  stadium      String?
+  referee      String?
+  round        String?
+  matchday     Int?
+  homePossession Float?
+  awayPossession Float?
+  homeShots    Int?
+  awayShots    Int?
+  homeShotsOnTarget Int?
+  awayShotsOnTarget Int?
+  homeCorners  Int?
+  awayCorners  Int?
+  homeFouls    Int?
+  awayFouls    Int?
+  homeYellowCards Int?
+  awayYellowCards Int?
+  homeRedCards  Int?
+  awayRedCards  Int?
+  broadcastChannels String? // قنوات البث
+  streamUrl    String?  // رابط البث الرسمي
+  matchReport  String?  // تقرير المباراة
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  homeTeam     Team     @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Cascade)
+  awayTeam     Team     @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Cascade)
+  league       League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  events       MatchEvent[]
+  lineups      MatchLineup[]
+  predictions  Prediction[]
+  favorites    UserFavorite[]
+}
+
+model MatchEvent {
+  id        String   @id @default(cuid())
+  matchId   String
+  type      String   // goal, yellow_card, red_card, substitution, var, penalty, own_goal, halftime, fulltime
+  minute    Int
+  team      String   // home, away
+  playerId  String?
+  assistPlayerId String?
+  detail    String?  // تفاصيل إضافية
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player       Player?  @relation("PlayerEvents", fields: [playerId], references: [id], onDelete: SetNull)
+  assistPlayer Player?  @relation("AssistPlayer", fields: [assistPlayerId], references: [id], onDelete: SetNull)
+}
+
+model MatchLineup {
+  id        String   @id @default(cuid())
+  matchId   String
+  teamId    String
+  playerId  String
+  position  String?
+  isStarter Boolean  @default(true)
+  shirtNumber Int?
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player    Player   @relation("LineupPlayer", fields: [playerId], references: [id], onDelete: Cascade)
+}
+
+// ===== الترتيب =====
+model Standing {
+  id          String   @id @default(cuid())
+  leagueId    String
+  teamId      String
+  season      String?
+  position    Int
+  played      Int      @default(0)
+  won         Int      @default(0)
+  drawn       Int      @default(0)
+  lost        Int      @default(0)
+  goalsFor    Int      @default(0)
+  goalsAgainst Int     @default(0)
+  goalDifference Int   @default(0)
+  points      Int      @default(0)
+  form        String?  // "WWDLL" آخر 5 مباريات
+  league      League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, teamId])
+}
+
+// ===== الهدافون =====
+model TopScorer {
+  id       String @id @default(cuid())
+  leagueId String
+  playerId String
+  teamId   String
+  goals    Int    @default(0)
+  assists  Int    @default(0)
+  penaltyGoals Int @default(0)
+  league   League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, playerId])
+}
+
+// ===== الأخبار =====
+model Article {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  summary     String?
+  content     String
+  image       String?
+  category    String   @default("general") // general, transfer, analysis, interview, report, breaking
+  isBreaking  Boolean  @default(false)
+  isFeatured  Boolean  @default(false)
+  isPublished Boolean  @default(false)
+  status      String   @default("draft") // draft, review, published
+  authorId    String
+  publishedAt DateTime?
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  tags        ArticleTag[]
+  teams       ArticleTeam[]
+  comments    Comment[]
+}
+
+model ArticleTag {
+  id        String @id @default(cuid())
+  articleId String
+  tag       String
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, tag])
+}
+
+model ArticleTeam {
+  id        String @id @default(cuid())
+  articleId String
+  teamId    String
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, teamId])
+}
+
+// ===== التعليقات =====
+model Comment {
+  id        String   @id @default(cuid())
+  articleId String
+  userId    String
+  content   String
+  isApproved Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ===== التوقعات =====
+model Prediction {
+  id           String @id @default(cuid())
+  userId       String
+  matchId      String
+  homeScore    Int
+  awayScore    Int
+  points       Int    @default(0)
+  isCorrect    Boolean @default(false)
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match        Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId])
+}
+
+// ===== الإعلانات =====
+model AdSlot {
+  id          String   @id @default(cuid())
+  title       String
+  position    String   // header_banner, sidebar_top, sidebar_bottom, article_top, article_bottom, article_middle, home_featured, match_banner, footer_banner
+  type        String   @default("image") // image, html, adsense
+  advertiser  String?  // اسم المعلن
+  imageUrl    String?  // رابط صورة الإعلان
+  linkUrl     String?  // رابط عند النقر
+  content     String?  // محتوى HTML أو كود إعلاني (لنوع html/adsense)
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0) // أولوية العرض (أعلى = يظهر أولاً)
+  targetPages String?  // الصفحات المستهدفة: all, home, news, article, matches, match_detail (مفصولة بفاصلة)
+  width       String?  // عرض الإعلان: 728px, 300px, responsive
+  height      String?  // ارتفاع الإعلان: 90px, 250px, auto
+  startDate   DateTime?
+  endDate     DateTime?
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===== إعدادات الموقع =====
+model SiteSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}
+
+// ===== صفحات الموقع =====
+model SitePage {
+  id          String   @id @default(cuid())
+  slug        String   @unique // about, privacy, terms, contact
+  title       String
+  content     String   // محتوى الصفحة (نص/HTML)
+  metaDescription String?
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
